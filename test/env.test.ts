@@ -1,5 +1,11 @@
-import { describe, expect, test } from "vitest";
-import { formatEnv, parseEnv } from "../src/env.ts";
+import { afterEach, describe, expect, test } from "vitest";
+import {
+  formatEnv,
+  getCredentialDiagnostics,
+  MANAGED_ENV_KEYS,
+  parseEnv,
+} from "../src/env.ts";
+import { CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY } from "../src/constants.ts";
 
 describe("parseEnv", () => {
   test("parses simple KEY=value lines", () => {
@@ -73,6 +79,44 @@ describe("formatEnv", () => {
       "AAA_CUSTOM",
       "ZZZ_CUSTOM",
     ]);
+  });
+});
+
+describe("CLAUDE_CODE_OAUTH_TOKEN managed secret (FR-9, NFR-2)", () => {
+  const original = process.env[CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY];
+
+  afterEach(() => {
+    if (original === undefined) {
+      delete process.env[CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY];
+    } else {
+      process.env[CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY] = original;
+    }
+  });
+
+  test("token is a managed key placed after the Anthropic keys", () => {
+    // Modify: managed-keys order now includes the subscription OAuth token,
+    // grouped with the other Anthropic credentials.
+    expect(MANAGED_ENV_KEYS).toContain(CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY);
+    const keys = MANAGED_ENV_KEYS as readonly string[];
+    expect(keys.indexOf(CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY)).toBe(
+      keys.indexOf("ANTHROPIC_BASE_URL") + 1,
+    );
+  });
+
+  test("token is a managed masked secret in diagnostics", async () => {
+    const secret = "oauth-super-secret-token-value-1234567890";
+    process.env[CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY] = secret;
+
+    const diagnostics = await getCredentialDiagnostics();
+    const entry = diagnostics.find(
+      (d) => d.key === CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY,
+    );
+
+    expect(entry).toBeDefined();
+    expect(entry?.length).toBe(secret.length);
+    // Preview is a masked first6...last4 form, never the plaintext token.
+    expect(entry?.preview).not.toContain(secret);
+    expect(entry?.preview).toContain("...");
   });
 });
 

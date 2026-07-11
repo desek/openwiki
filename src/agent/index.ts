@@ -410,7 +410,7 @@ function ensureProviderKey(provider: OpenWikiProvider): void {
  * @param provider - The resolved active provider.
  * @param options - Run options carrying the event/debug sink.
  */
-function warnOnAnthropicApiKeyFootgun(
+export function warnOnAnthropicApiKeyFootgun(
   provider: OpenWikiProvider,
   options: OpenWikiRunOptions,
 ): void {
@@ -442,7 +442,7 @@ function warnOnAnthropicApiKeyFootgun(
  * @param modelId - The requested model id (Haiku is passed through untouched).
  * @returns The FR-8 guidance error, or the original error when not applicable.
  */
-function translateAnthropicCategorical429(
+export function translateAnthropicCategorical429(
   error: unknown,
   provider: OpenWikiProvider,
   modelId: string,
@@ -534,7 +534,7 @@ function resolveModelId(
   return modelId;
 }
 
-function createModel(
+export function createModel(
   provider: OpenWikiProvider,
   modelId: string,
   providerRetryAttempts: number,
@@ -1402,7 +1402,7 @@ function formatEnvironmentDebug(): string {
   ).join(" ");
 }
 
-function formatDebugValue(key: string, value: string | undefined): string {
+export function formatDebugValue(key: string, value: string | undefined): string {
   if (value === undefined) {
     return "unset";
   }

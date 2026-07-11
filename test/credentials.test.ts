@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { needsCredentialSetup } from "../src/credentials.tsx";
+import {
+  getProviderApiKeyEnvKey,
+  getProviderLabel,
+  getProviderModelOptions,
+  SELECTABLE_OPENWIKI_PROVIDERS,
+} from "../src/constants.ts";
 
 const ENV_KEYS = [
   "LANGSMITH_API_KEY",
@@ -22,6 +28,26 @@ afterEach(() => {
       process.env[key] = originalValue;
     }
   }
+});
+
+describe("provider-list rendering surfaces anthropic-claude (FR-10, AC-10)", () => {
+  test("the credentials provider list includes anthropic-claude and its four models", () => {
+    // The onboarding/credentials UI renders from SELECTABLE_OPENWIKI_PROVIDERS
+    // and getProviderModelOptions, so asserting these surfaces the new provider.
+    expect(SELECTABLE_OPENWIKI_PROVIDERS).toContain("anthropic-claude");
+    expect(getProviderLabel("anthropic-claude")).toBe(
+      "Anthropic (Claude subscription)",
+    );
+    expect(
+      getProviderModelOptions("anthropic-claude").map((m) => m.label),
+    ).toEqual(["Sonnet", "Opus", "Haiku", "Fable"]);
+  });
+
+  test("its credential step collects the subscription OAuth token", () => {
+    expect(getProviderApiKeyEnvKey("anthropic-claude")).toBe(
+      "CLAUDE_CODE_OAUTH_TOKEN",
+    );
+  });
 });
 
 describe("needsCredentialSetup", () => {

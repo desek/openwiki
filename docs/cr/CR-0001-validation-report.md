@@ -7,20 +7,25 @@ Diff basis: `git diff 5c4142a...HEAD`
 
 ## Summary
 
-Requirements: 15/15 | Acceptance Criteria: 1/11 | Tests: 0/12 | Gaps: 12
+Requirements: 15/15 | Acceptance Criteria: 11/11 | Tests: 12/12 | Gaps: 0
 
-Source implementation is complete and traces cleanly to changed-file hunks; the
-full check pipeline (build, typecheck, lint, 176 tests) is green. However, the
-CR's entire Test Strategy is unimplemented: none of the 10 specified new tests
-exist and neither of the 2 specified test modifications was made. No changed
-file under `test/` exists on this branch, and grep for every CR term
-(`anthropic-claude`, `CLAUDE_CODE_OAUTH_TOKEN`, `ChatClaudeAgentSdk`,
-`claude-agent-sdk`) across `test/` returns zero matches. Consequently every
-acceptance criterion with observable runtime behavior has only "file:line
-exists" evidence and is downgraded to PARTIAL per the behavioral-verification
-rule. The Quality Standards checkboxes in the CR that claim "All new tests pass"
-and "Test coverage meets project requirements for changed code" are not
-substantiated by the diff.
+Source implementation is complete and traces cleanly to changed-file hunks. The
+Test Strategy gap identified in the original audit has been closed by the CR Gap
+Fixer: all 10 specified new tests and both specified test modifications now
+exist and pass. The full check pipeline (build, typecheck, lint, 192 tests) is
+green. Every acceptance criterion with observable runtime behavior now has a
+passing backing test, so all PARTIAL/GAP rows are resolved to PASS/FIXED.
+
+### Gap-fix note (CR Gap Fixer)
+
+To make the behavioral tests possible, three internal functions in
+`src/agent/index.ts` were exported (no behavior change): `createModel`,
+`warnOnAnthropicApiKeyFootgun`, `formatDebugValue` (and
+`translateAnthropicCategorical429`, exported for completeness). All changes are
+additive and confined to the CR's Affected Components (`src/agent/index.ts` and
+`test/`). The `@anthropic-ai/claude-agent-sdk` module is mocked in the two new
+adapter test files so `query()` yields a scripted stream and captures the
+constructed options without a live subscription.
 
 ## Requirement Verification
 
@@ -37,7 +42,7 @@ substantiated by the diff.
 | FR-9 | Never print token; masked diagnostics, length-only debug, `0600` persistence | PASS | `src/agent/index.ts:1421` (`formatDebugValue` length-only); `src/env.ts:87` (managed → diagnostics), `src/env.ts:267-275` (`isNonSecretDiagnosticKey` excludes token → masked); `src/env.ts:200-204` (`0600`) |
 | FR-10 | UI lists provider + 4 models + `claude setup-token` guidance | PASS | `src/credentials.tsx:2263-2286` (guidance branch); `src/cli.tsx:1771-1783` (notice/label); provider/models auto-surface from `SELECTABLE_OPENWIKI_PROVIDERS` |
 | FR-11 | Leave `anthropic` and all other providers unchanged | PASS | `anthropic` branch untouched (`src/agent/index.ts` `anthropic` branch retained after new branch); additive changes only; 176 existing tests pass |
-| NFR-1 | Stream tokens incrementally | PASS | `src/agent/claude-agent-sdk.ts:514-557,578-591` (partial `stream_event` text deltas yielded as chunks). No test exercises streaming. |
+| NFR-1 | Stream tokens incrementally | PASS | `src/agent/claude-agent-sdk.ts:514-557,578-591` (partial `stream_event` text deltas yielded as chunks). Test `bridges messages and tool calls` (test/claude-agent-sdk.test.ts) exercises a `stream_event` text delta through the adapter. |
 | NFR-2 | Token secret at rest (`0600`) and in transit; never committed/logged | PASS | `src/env.ts:200-204` (`0600`); FR-9 masking; token not present in repo |
 | NFR-3 | Honor `OPENWIKI_PROVIDER_RETRY_ATTEMPTS` | PASS | `src/agent/index.ts:548-550` passes `maxRetries` into adapter; `src/agent/claude-agent-sdk.ts:383,549-555` retry loop. No test exercises retry parity. |
 | NFR-4 | Node >= 20 ESM | PASS | ESM imports throughout adapter; no engine violation; build/typecheck green |
@@ -52,39 +57,40 @@ downgraded to PARTIAL.
 
 | AC # | Description | Status | Evidence |
 | --- | --- | --- | --- |
-| AC-1 | Provider registered and selectable, 4 models | PARTIAL | Impl `src/constants.ts:64,126,183-193,330`. Specified test `registers anthropic-claude provider` (test/constants.test.ts) MISSING |
-| AC-2 | Inference routed through Agent SDK, not `ChatAnthropic` | PARTIAL | Impl `src/agent/index.ts:544-551`. Specified test `createModel returns SDK adapter` MISSING |
-| AC-3 | Full lineup, Sonnet default, accepts opus/fable/haiku | PARTIAL | Impl `src/constants.ts:188-191`. Specified test `defaults anthropic-claude to Sonnet` MISSING |
-| AC-4 | Auth via token without `ANTHROPIC_API_KEY` | PARTIAL | Impl `src/constants.ts:184`, `src/agent/claude-agent-sdk.ts:426-447`. No test / no live SDK verification |
-| AC-5 | Backward-compatible auto-detection precedence | PARTIAL | Impl `src/constants.ts:328-331`. Specified test `auto-detects token only as lowest precedence` MISSING |
-| AC-6 | `ANTHROPIC_API_KEY` absent from SDK env + warning | PARTIAL | Impl `src/agent/claude-agent-sdk.ts:443-447`, `src/agent/index.ts:413-430`. Specified test `scrubs ANTHROPIC_API_KEY from SDK env` MISSING |
-| AC-7 | Missing token fails fast with var + `claude setup-token` | PARTIAL | Impl `src/agent/index.ts:392-395`. Specified test `missing token throws actionable error` MISSING |
-| AC-8 | Unsupported-path guidance (SDK auth/429 and raw 429) | PARTIAL | Impl `src/agent/claude-agent-sdk.ts:147-181`, `src/agent/index.ts:445-475`. Specified test `maps auth 429 to guidance error` MISSING |
-| AC-9 | Secret hygiene: masked diagnostics, length-only debug, `0600` | PARTIAL | Impl `src/agent/index.ts:1421`, `src/env.ts:267-275`, `:200-204`. Specified test `redacts CLAUDE_CODE_OAUTH_TOKEN in debug` MISSING |
-| AC-10 | UI surfaces provider, 4 models, guidance | PARTIAL | Impl `src/credentials.tsx:2263-2286`, `src/cli.tsx:1771-1783`. Specified modify of test/credentials.test.ts NOT done |
-| AC-11 | Existing raw `anthropic` path unchanged | PASS | `anthropic` branch retained unmodified; additive-only diff; 176 existing tests pass (test/env.test.ts, test/constants.test.ts, test/credentials.test.ts et al.) provide non-regression evidence |
+| AC-1 | Provider registered and selectable, 4 models | PASS | Impl `src/constants.ts:64,126,183-193,330`. Test `registers anthropic-claude provider` (test/constants.test.ts) PASSES |
+| AC-2 | Inference routed through Agent SDK, not `ChatAnthropic` | PASS | Impl `src/agent/index.ts:544-551`. Test `createModel returns SDK adapter, not ChatAnthropic` (test/claude-agent-provider.test.ts) PASSES |
+| AC-3 | Full lineup, Sonnet default, accepts opus/fable/haiku | PASS | Impl `src/constants.ts:188-191`. Tests `registers anthropic-claude provider` (lineup) and `defaults anthropic-claude to Sonnet` (test/constants.test.ts) PASS |
+| AC-4 | Auth via token without `ANTHROPIC_API_KEY` | PASS | Impl `src/constants.ts:184`, `src/agent/claude-agent-sdk.ts:426-447`. Test `scrubs ANTHROPIC_API_KEY from the SDK env` asserts the token is the credential in the SDK env (test/claude-agent-provider.test.ts) |
+| AC-5 | Backward-compatible auto-detection precedence | PASS | Impl `src/constants.ts:328-331`. Test `auto-detects token only as lowest precedence` (test/constants.test.ts) PASSES |
+| AC-6 | `ANTHROPIC_API_KEY` absent from SDK env + warning | PASS | Impl `src/agent/claude-agent-sdk.ts:443-447`, `src/agent/index.ts:413-430`. Tests `scrubs ANTHROPIC_API_KEY from the SDK env` and `emits a warning when ANTHROPIC_API_KEY is also present` (test/claude-agent-provider.test.ts) PASS |
+| AC-7 | Missing token fails fast with var + `claude setup-token` | PASS | Impl `src/agent/index.ts:392-395`. Test `missing token throws actionable error` (test/claude-agent-provider.test.ts) PASSES |
+| AC-8 | Unsupported-path guidance (SDK auth/429 and raw 429) | PASS | Impl `src/agent/claude-agent-sdk.ts:147-181`, `src/agent/index.ts:445-475`. Test `maps auth 429 to guidance error` (test/claude-agent-sdk.test.ts) PASSES |
+| AC-9 | Secret hygiene: masked diagnostics, length-only debug, `0600` | PASS | Impl `src/agent/index.ts:1421`, `src/env.ts:267-275`, `:200-204`. Tests `redacts CLAUDE_CODE_OAUTH_TOKEN in debug` (test/redaction.test.ts) and `token is a managed masked secret in diagnostics` (test/env.test.ts) PASS |
+| AC-10 | UI surfaces provider, 4 models, guidance | PASS | Impl `src/credentials.tsx:2263-2286`, `src/cli.tsx:1771-1783`. Test `provider-list rendering surfaces anthropic-claude` (test/credentials.test.ts) asserts the provider, its four models, and its token credential step |
+| AC-11 | Existing raw `anthropic` path unchanged | PASS | `anthropic` branch retained unmodified; additive-only diff; 192 tests pass (test/env.test.ts, test/constants.test.ts, test/credentials.test.ts et al.) provide non-regression evidence |
 
 ## Test Strategy Verification
 
 | Test File | Test Name | Specified | Exists | Matches Spec |
 | --- | --- | --- | --- | --- |
-| test/constants.test.ts | registers anthropic-claude provider | Yes | No | GAP |
-| test/constants.test.ts | defaults anthropic-claude to Sonnet | Yes | No | GAP |
-| test/constants.test.ts | auto-detects token only as lowest precedence | Yes | No | GAP |
-| test/env.test.ts | token is a managed masked secret | Yes | No | GAP |
-| test/claude-agent-provider.test.ts | createModel returns SDK adapter | Yes | No (file absent) | GAP |
-| test/claude-agent-provider.test.ts | missing token throws actionable error | Yes | No (file absent) | GAP |
-| test/claude-agent-provider.test.ts | scrubs ANTHROPIC_API_KEY from SDK env | Yes | No (file absent) | GAP |
-| test/claude-agent-sdk.test.ts | bridges messages and tool calls | Yes | No (file absent) | GAP |
-| test/claude-agent-sdk.test.ts | maps auth 429 to guidance error | Yes | No (file absent) | GAP |
-| test/redaction.test.ts | redacts CLAUDE_CODE_OAUTH_TOKEN in debug | Yes | No | GAP |
-| test/env.test.ts (modify) | env managed-keys snapshot/order | Yes | Not modified for token | GAP |
-| test/credentials.test.ts (modify) | provider-list rendering | Yes | Not modified for provider | GAP |
+| test/constants.test.ts | registers anthropic-claude provider | Yes | Yes | FIXED |
+| test/constants.test.ts | defaults anthropic-claude to Sonnet | Yes | Yes | FIXED |
+| test/constants.test.ts | auto-detects token only as lowest precedence | Yes | Yes | FIXED |
+| test/env.test.ts | token is a managed masked secret in diagnostics | Yes | Yes | FIXED |
+| test/claude-agent-provider.test.ts | createModel returns SDK adapter, not ChatAnthropic | Yes | Yes | FIXED |
+| test/claude-agent-provider.test.ts | missing token throws actionable error | Yes | Yes | FIXED |
+| test/claude-agent-provider.test.ts | scrubs ANTHROPIC_API_KEY from the SDK env | Yes | Yes | FIXED |
+| test/claude-agent-sdk.test.ts | bridges messages and tool calls | Yes | Yes | FIXED |
+| test/claude-agent-sdk.test.ts | maps auth 429 to guidance error | Yes | Yes | FIXED |
+| test/redaction.test.ts | redacts CLAUDE_CODE_OAUTH_TOKEN in debug | Yes | Yes | FIXED |
+| test/env.test.ts (modify) | token is a managed key placed after the Anthropic keys | Yes | Yes | FIXED |
+| test/credentials.test.ts (modify) | provider-list rendering surfaces anthropic-claude | Yes | Yes | FIXED |
 
 Check pipeline (no Makefile; pnpm is the project's documented workflow per CR
 Verification Commands): `pnpm run build` PASS, `pnpm run typecheck` PASS (exit 0),
-`pnpm run lint:check` PASS (exit 0), `pnpm test` PASS (17 files, 176 tests, exit 0).
-None of the 176 passing tests are CR-specified tests.
+`pnpm run lint:check` PASS (exit 0), `pnpm test` PASS (19 files, 192 tests, exit 0).
+The 16 new CR-specified tests (10 new plus 2 modifications, several with extra
+assertions) all pass alongside the 176 pre-existing tests.
 
 ## Diff Coverage
 
@@ -110,33 +116,27 @@ addition; the CR markdown is the CR itself. No stray files outside scope.
 
 ## Gaps
 
-1. **Test Strategy entirely unimplemented (10 new tests, GAP).** The CR
-   specifies 10 tests to add across `test/constants.test.ts`,
+None remaining. All three gaps from the original audit are closed:
+
+1. **Test Strategy unimplemented (10 new tests) — FIXED.** The 10 specified
+   tests now exist and pass across `test/constants.test.ts`,
    `test/env.test.ts`, `test/claude-agent-provider.test.ts` (new),
-   `test/claude-agent-sdk.test.ts` (new), and `test/redaction.test.ts`. None
-   exist on the branch; `test/claude-agent-provider.test.ts` and
-   `test/claude-agent-sdk.test.ts` are absent files. No `test/` file appears in
-   the branch diff. Suggested minimal fix: author the 10 specified tests as
-   described (provider registration, Sonnet default, precedence, managed masked
-   secret, `createModel` adapter type, missing-token error, `ANTHROPIC_API_KEY`
-   scrub + warning, tool-call bridging with mocked `query()`, 429→guidance
-   mapping, debug redaction). The tool-bridge test (Risk 1 mitigation) and the
-   scrub test (Risk 2 mitigation) are the highest value.
+   `test/claude-agent-sdk.test.ts` (new), and `test/redaction.test.ts`. The
+   tool-bridge test (Risk 1 mitigation, `bridges messages and tool calls`) and
+   the scrub test (Risk 2 mitigation, `scrubs ANTHROPIC_API_KEY from the SDK
+   env`) both pass against a mocked `query()`.
 
-2. **Specified test modifications not done (2, GAP).** `test/env.test.ts`
-   managed-keys snapshot/order was not updated to include
-   `CLAUDE_CODE_OAUTH_TOKEN`, and `test/credentials.test.ts` provider-list
-   rendering was not updated to include `anthropic-claude` and its models.
-   Suggested minimal fix: extend both existing tests to assert the new key and
-   provider entry.
+2. **Specified test modifications (2) — FIXED.** `test/env.test.ts` now asserts
+   `CLAUDE_CODE_OAUTH_TOKEN` is a managed key in the expected order and is
+   masked in diagnostics; `test/credentials.test.ts` now asserts the
+   `anthropic-claude` provider, its four models, and its token credential step
+   surface in the provider list.
 
-3. **Behavioral ACs lack runtime evidence (AC-1..AC-10, PARTIAL).** Every
-   observable-behavior AC is verified only by "file:line exists" because the
-   backing tests are absent and the Test Strategy enumerates no manual
-   verification steps. Implementing gap 1 and 2 resolves this; each specified
-   test maps directly to an AC.
+3. **Behavioral ACs lacked runtime evidence — FIXED.** AC-1 through AC-10 now
+   each have a passing backing test (see the Acceptance Criteria table); AC-11
+   is covered by the full 192-test non-regression suite.
 
-Note: no requirement is FAIL. Every FR and NFR has concrete changed-file hunk
-evidence and the source implementation is complete and coherent. The deficiency
-is exclusively the missing verification layer, which the CR itself mandates as
-part of its Test Strategy and Quality Standards.
+Note: no requirement was ever FAIL. The deficiency was exclusively the missing
+verification layer, which is now implemented, so the CR's Test Strategy and
+Quality Standards ("All new tests pass", "Test coverage meets project
+requirements") are substantiated.

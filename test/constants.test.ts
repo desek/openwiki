@@ -13,6 +13,7 @@ import {
   resolveConfiguredProvider,
   resolveProviderBaseUrl,
   resolveProviderRetryAttempts,
+  SELECTABLE_OPENWIKI_PROVIDERS,
 } from "../src/constants.ts";
 
 describe("isValidModelId", () => {
@@ -84,6 +85,48 @@ describe("resolveConfiguredProvider", () => {
     expect(resolveConfiguredProvider({ OPENWIKI_PROVIDER: "bogus" })).toBe(
       DEFAULT_PROVIDER,
     );
+  });
+});
+
+describe("anthropic-claude provider registration (FR-1, FR-3, FR-5)", () => {
+  test("registers anthropic-claude provider", () => {
+    // AC-1: provider is selectable and exposes the full four-model lineup.
+    expect(isValidProvider("anthropic-claude")).toBe(true);
+    expect(SELECTABLE_OPENWIKI_PROVIDERS).toContain("anthropic-claude");
+    expect(getProviderModelOptions("anthropic-claude").map((m) => m.id)).toEqual(
+      ["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5", "claude-fable-5"],
+    );
+  });
+
+  test("defaults anthropic-claude to Sonnet", () => {
+    // AC-3: Sonnet is first in the option list, so it is the default model id.
+    expect(getDefaultModelId("anthropic-claude")).toBe("claude-sonnet-5");
+  });
+
+  test("auto-detects token only as lowest precedence", () => {
+    // AC-5: the token alone selects anthropic-claude, but any higher-precedence
+    // provider credential wins, so existing users are unaffected.
+    expect(
+      resolveConfiguredProvider({ CLAUDE_CODE_OAUTH_TOKEN: "tok" }),
+    ).toBe("anthropic-claude");
+    expect(
+      resolveConfiguredProvider({
+        CLAUDE_CODE_OAUTH_TOKEN: "tok",
+        ANTHROPIC_API_KEY: "k",
+      }),
+    ).toBe("anthropic");
+    expect(
+      resolveConfiguredProvider({
+        CLAUDE_CODE_OAUTH_TOKEN: "tok",
+        OPENAI_API_KEY: "k",
+      }),
+    ).toBe("openai");
+    expect(
+      resolveConfiguredProvider({
+        CLAUDE_CODE_OAUTH_TOKEN: "tok",
+        FIREWORKS_API_KEY: "k",
+      }),
+    ).toBe("fireworks");
   });
 });
 

@@ -4,7 +4,11 @@ import {
   isOpenRouterServerError,
   sanitizeDiagnosticText,
 } from "../src/diagnostics.ts";
-import { sanitizeOpenRouterResponseBody } from "../src/agent/index.ts";
+import {
+  formatDebugValue,
+  sanitizeOpenRouterResponseBody,
+} from "../src/agent/index.ts";
+import { CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY } from "../src/constants.ts";
 
 describe("sanitizeDiagnosticText", () => {
   const originalOpenAiKey = process.env.OPENAI_API_KEY;
@@ -93,6 +97,24 @@ describe("sanitizeDiagnosticText", () => {
 
     expect(result).not.toContain("compatible-secret-key-99999");
     expect(result).toContain("[REDACTED:OPENAI_COMPATIBLE_API_KEY]");
+  });
+});
+
+describe("formatDebugValue redacts CLAUDE_CODE_OAUTH_TOKEN (FR-9)", () => {
+  test("reduces the token to length-only with no first6...last4 preview", () => {
+    const token = "oauth-token-abcdef0123456789";
+    const result = formatDebugValue(CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY, token);
+
+    expect(result).toBe(`set(length=${token.length})`);
+    expect(result).not.toContain(token);
+    expect(result).not.toContain("preview");
+    expect(result).not.toContain("...");
+  });
+
+  test("reports an unset token as unset", () => {
+    expect(formatDebugValue(CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY, undefined)).toBe(
+      "unset",
+    );
   });
 });
 
