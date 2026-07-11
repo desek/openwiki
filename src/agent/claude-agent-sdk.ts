@@ -27,6 +27,7 @@
  *   as `text` chunks as the SDK yields them.
  */
 
+import { appendFileSync } from "node:fs";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChatModel,
@@ -72,6 +73,30 @@ const BRIDGE_MCP_SERVER_NAME = "openwiki_tools";
  * namespace and DeepAgents' un-namespaced tool identifiers.
  */
 const BRIDGE_TOOL_PREFIX = `mcp__${BRIDGE_MCP_SERVER_NAME}__`;
+
+/**
+ * Appends a diagnostic line to the file named by `OPENWIKI_SDK_TRACE`, when
+ * set. Exists because Agent SDK stream behavior can only be diagnosed from a
+ * full run; the trace records every raw SDK message and every emitted chunk
+ * without touching normal output. No-op (and never throws) when unset.
+ *
+ * @param kind - Short event tag (e.g. `message`, `chunk`, `stream-error`).
+ * @param payload - JSON-serializable event detail; stringified best-effort.
+ */
+function traceSdk(kind: string, payload: unknown): void {
+  const path = process.env.OPENWIKI_SDK_TRACE;
+  if (!path) {
+    return;
+  }
+  try {
+    appendFileSync(
+      path,
+      `${JSON.stringify({ kind, payload })}\n`.slice(0, 20000),
+    );
+  } catch {
+    // Tracing must never affect inference.
+  }
+}
 
 /**
  * Call options accepted by {@link ChatClaudeAgentSdkModel}. Extends the base
@@ -127,6 +152,27 @@ interface SdkMessageView {
     delta?: { type?: string; text?: string };
   };
   message?: { content?: AnthropicContentBlock[] };
+  /** Error strings carried by a non-success `result` message. */
+  errors?: string[];
+  /** Result text carried by a `result` message (error detail on failure). */
+  result?: string;
+}
+
+/**
+ * Mutable state threaded through one streamed generation.
+ *
+ * `emittedToolCalls` marks that tool_use chunks were already yielded, so the
+ * deny-and-interrupt error result that ends such a turn is expected rather
+ * than fatal. `nextToolBlockIndex` hands each tool call a content-block index
+ * that is unique across the generation and never 0, because LangChain's
+ * `convertChunksToEvents` keys blocks by index and streamed text occupies
+ * block 0; a collision silently merges the tool call into the text block.
+ */
+interface TurnStreamState {
+  /** True once a tool_call chunk has been yielded this generation. */
+  emittedToolCalls: boolean;
+  /** Next unique, non-zero content-block index for a tool call. */
+  nextToolBlockIndex: number;
 }
 
 /**
@@ -170,13 +216,34 @@ const SDK_ERROR_GUIDANCE: Partial<Record<SDKAssistantMessageError, string>> = {
 function buildSdkGuidanceError(
   error: SDKAssistantMessageError,
   model: string,
+  detail?: string,
 ): Error {
   const guidance =
     SDK_ERROR_GUIDANCE[error] ??
     "the Claude Agent SDK could not complete the request over the subscription path.";
+  const detailSuffix = detail ? ` Underlying SDK detail: ${detail}` : "";
   return new Error(
     `Claude Agent SDK error (${error}) for model "${model}": ${guidance} ` +
-      `The anthropic-claude provider authenticates with ${CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY} over the Agent SDK path, which unlocks the full Claude model lineup.`,
+      `The anthropic-claude provider authenticates with ${CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY} over the Agent SDK path, which unlocks the full Claude model lineup.` +
+      detailSuffix,
+  );
+}
+
+/**
+ * Detects the error the Agent SDK iterator throws when a turn ends on an
+ * error result. When the adapter has already captured `tool_use` blocks, this
+ * is the EXPECTED terminal state: the deny-and-interrupt `canUseTool` policy
+ * (which hands the tool loop back to DeepAgents) makes the SDK close the turn
+ * with an error result instead of `success`, and the SDK surfaces that as a
+ * thrown "Claude Code returned an error result" error.
+ *
+ * @param error - The value thrown by the Agent SDK message iterator.
+ * @returns True when the error is the SDK's error-result wrapper.
+ */
+function isErrorResultWrapper(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.startsWith("Claude Code returned an error result")
   );
 }
 
@@ -334,14 +401,22 @@ function extractToolShape(boundTool: BindToolsInput): z.ZodRawShape {
   const candidate = boundTool as {
     schema?: unknown;
   };
-  const schema = candidate.schema;
-  if (
-    schema &&
-    typeof schema === "object" &&
-    "shape" in schema &&
-    typeof schema.shape === "object"
-  ) {
-    return schema.shape as z.ZodRawShape;
+  let schema = candidate.schema;
+  // Unwrap zod wrapper types until an object schema surfaces. DeepAgents wraps
+  // several filesystem tool schemas in `z.preprocess(...)` (a zod v4 pipe),
+  // which hides `.shape`; presenting the degraded fallback schema instead
+  // makes the model emit wrongly-shaped arguments that DeepAgents rejects.
+  for (let depth = 0; schema && typeof schema === "object" && depth < 10;) {
+    if ("shape" in schema && typeof schema.shape === "object") {
+      return schema.shape as z.ZodRawShape;
+    }
+    const def = (schema as { def?: Record<string, unknown> }).def;
+    const inner = def?.out ?? def?.innerType ?? def?.schema;
+    if (!inner || typeof inner !== "object") {
+      break;
+    }
+    schema = inner;
+    depth += 1;
   }
   // Permissive fallback: the SDK still names the tool to the model; DeepAgents
   // validates the arguments it receives.
@@ -524,6 +599,10 @@ export class ChatClaudeAgentSdkModel extends BaseChatModel<ChatClaudeAgentSdkCal
     // have streamed, a retry would duplicate output, so failures propagate.
     for (;;) {
       let yieldedAny = false;
+      const turnState: TurnStreamState = {
+        emittedToolCalls: false,
+        nextToolBlockIndex: 1,
+      };
       try {
         const stream = query({
           prompt,
@@ -531,20 +610,41 @@ export class ChatClaudeAgentSdkModel extends BaseChatModel<ChatClaudeAgentSdkCal
         });
 
         for await (const message of stream) {
-          const chunk = this.translateMessage(message);
+          traceSdk("message", message);
+          const chunk = this.translateMessage(message, turnState);
           if (!chunk) {
             continue;
           }
           yieldedAny = true;
+          if ((chunk.message as AIMessageChunk).tool_call_chunks?.length) {
+            turnState.emittedToolCalls = true;
+          }
+          traceSdk("chunk", {
+            text: chunk.text,
+            toolCallChunks: (chunk.message as AIMessageChunk).tool_call_chunks,
+          });
           if (chunk.text) {
             await runManager?.handleLLMNewToken(chunk.text);
           }
           yield chunk;
         }
+        traceSdk("stream-end", {
+          emittedToolCalls: turnState.emittedToolCalls,
+        });
         return;
       } catch (error) {
+        traceSdk("stream-error", {
+          emittedToolCalls: turnState.emittedToolCalls,
+          message: error instanceof Error ? error.message : String(error),
+        });
         if (error instanceof AbortError) {
           throw error;
+        }
+        // The deny-and-interrupt canUseTool policy ends a tool-calling turn
+        // with an SDK error result; the tool_use chunks are already yielded,
+        // so the turn is complete and the wrapper error must not surface.
+        if (turnState.emittedToolCalls && isErrorResultWrapper(error)) {
+          return;
         }
         const retryable =
           !yieldedAny && attempt < this.maxRetries && isRetryableError(error);
@@ -564,11 +664,16 @@ export class ChatClaudeAgentSdkModel extends BaseChatModel<ChatClaudeAgentSdkCal
    * and surfaces categorical errors.
    *
    * @param message - The Agent SDK stream message.
+   * @param turnState - Mutable per-generation stream state: whether tool_use
+   * chunks were already emitted (a non-success result is then the expected
+   * deny-and-interrupt terminal state and is swallowed instead of thrown) and
+   * the next unique content-block index to assign to a tool call.
    * @returns A generation chunk, or `undefined` when there is nothing to emit.
    * @throws {Error} When the message carries a categorical SDK error (FR-8).
    */
   private translateMessage(
     message: SDKMessage,
+    turnState: TurnStreamState,
   ): ChatGenerationChunk | undefined {
     // The SDK message union references the vendored Anthropic SDK's content
     // types, which the type-aware linter cannot fully resolve; narrow through a
@@ -596,13 +701,19 @@ export class ChatClaudeAgentSdkModel extends BaseChatModel<ChatClaudeAgentSdkCal
         throw buildSdkGuidanceError(view.error, this.model);
       }
       const content = view.message?.content ?? [];
+      // Block indices must be unique across the WHOLE generation and must
+      // never be 0: LangChain's convertChunksToEvents keys content blocks by
+      // index, and streamed text always occupies block 0. A colliding index
+      // makes the tool call silently merge into the text block and vanish,
+      // which terminated the DeepAgents loop on every mixed text-plus-tool
+      // turn.
       const toolCallChunks = content
         .filter((block) => block.type === "tool_use")
-        .map((block, index) => ({
+        .map((block) => ({
           name: stripToolPrefix(block.name ?? ""),
           args: JSON.stringify(block.input ?? {}),
           id: block.id,
-          index,
+          index: turnState.nextToolBlockIndex++,
           type: "tool_call_chunk" as const,
         }));
       if (toolCallChunks.length === 0) {
@@ -618,7 +729,17 @@ export class ChatClaudeAgentSdkModel extends BaseChatModel<ChatClaudeAgentSdkCal
     }
 
     if (view.type === "result" && view.subtype !== "success") {
-      throw buildSdkGuidanceError("unknown", this.model);
+      // A tool-calling turn intentionally ends on an error result: the
+      // deny-and-interrupt canUseTool policy interrupts the SDK loop after the
+      // tool_use blocks are captured, so this is success from the adapter's
+      // perspective, not a failure.
+      if (turnState.emittedToolCalls) {
+        return undefined;
+      }
+      const detail = [view.subtype, ...(view.errors ?? []), view.result]
+        .filter(Boolean)
+        .join("; ");
+      throw buildSdkGuidanceError("unknown", this.model, detail || undefined);
     }
 
     return undefined;

@@ -97,8 +97,9 @@ describe("ANTHROPIC_API_KEY footgun (FR-6, AC-6, Risk 2)", () => {
     const model = createModel("anthropic-claude", "claude-sonnet-5", 0);
     await model.invoke([new HumanMessage("hi")]);
 
-    const env = (state.lastOptions as { env: Record<string, string | undefined> })
-      .env;
+    const env = (
+      state.lastOptions as { env: Record<string, string | undefined> }
+    ).env;
     expect("ANTHROPIC_API_KEY" in env).toBe(false);
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("subscription-token");
   });

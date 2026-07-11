@@ -93,9 +93,14 @@ describe("anthropic-claude provider registration (FR-1, FR-3, FR-5)", () => {
     // AC-1: provider is selectable and exposes the full four-model lineup.
     expect(isValidProvider("anthropic-claude")).toBe(true);
     expect(SELECTABLE_OPENWIKI_PROVIDERS).toContain("anthropic-claude");
-    expect(getProviderModelOptions("anthropic-claude").map((m) => m.id)).toEqual(
-      ["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5", "claude-fable-5"],
-    );
+    expect(
+      getProviderModelOptions("anthropic-claude").map((m) => m.id),
+    ).toEqual([
+      "claude-sonnet-5",
+      "claude-opus-4-8",
+      "claude-haiku-4-5",
+      "claude-fable-5",
+    ]);
   });
 
   test("defaults anthropic-claude to Sonnet", () => {
@@ -106,9 +111,9 @@ describe("anthropic-claude provider registration (FR-1, FR-3, FR-5)", () => {
   test("auto-detects token only as lowest precedence", () => {
     // AC-5: the token alone selects anthropic-claude, but any higher-precedence
     // provider credential wins, so existing users are unaffected.
-    expect(
-      resolveConfiguredProvider({ CLAUDE_CODE_OAUTH_TOKEN: "tok" }),
-    ).toBe("anthropic-claude");
+    expect(resolveConfiguredProvider({ CLAUDE_CODE_OAUTH_TOKEN: "tok" })).toBe(
+      "anthropic-claude",
+    );
     expect(
       resolveConfiguredProvider({
         CLAUDE_CODE_OAUTH_TOKEN: "tok",

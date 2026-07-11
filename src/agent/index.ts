@@ -1402,7 +1402,10 @@ function formatEnvironmentDebug(): string {
   ).join(" ");
 }
 
-export function formatDebugValue(key: string, value: string | undefined): string {
+export function formatDebugValue(
+  key: string,
+  value: string | undefined,
+): string {
   if (value === undefined) {
     return "unset";
   }

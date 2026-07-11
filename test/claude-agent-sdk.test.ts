@@ -14,12 +14,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
  * Mutable state shared with the hoisted module mock: the scripted Agent SDK
  * message stream and the options captured from the last `query()` call.
  */
-const state = vi.hoisted(
-  (): { messages: unknown[]; lastOptions: unknown } => ({
-    messages: [],
-    lastOptions: undefined,
-  }),
-);
+const state = vi.hoisted((): { messages: unknown[]; lastOptions: unknown } => ({
+  messages: [],
+  lastOptions: undefined,
+}));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   AbortError: class AbortError extends Error {},
@@ -111,9 +109,7 @@ describe("ChatClaudeAgentSdkModel bridging (Risk 1, NFR-1)", () => {
   test("maps auth 429 to guidance error", async () => {
     // A categorical assistant-message error surfaces as an FR-8 guidance error
     // naming the token, model, and subscription path.
-    state.messages = [
-      { type: "assistant", error: "authentication_failed" },
-    ];
+    state.messages = [{ type: "assistant", error: "authentication_failed" }];
 
     const model = new ChatClaudeAgentSdkModel({ model: "claude-opus-4-8" });
 

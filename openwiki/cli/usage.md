@@ -57,8 +57,8 @@ The UI persists provider and model selection back to `~/.openwiki/.env` through 
 
 The first interactive run can prompt for:
 
-- a **provider** (`OPENWIKI_PROVIDER`) — openai, openai-chatgpt, openrouter, baseten, fireworks, openai-compatible, or anthropic,
-- the **provider API key** (e.g. `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OPENAI_COMPATIBLE_API_KEY`, `ANTHROPIC_API_KEY`, `BASETEN_API_KEY`, `FIREWORKS_API_KEY`),
+- a **provider** (`OPENWIKI_PROVIDER`) — openai, openai-chatgpt, openrouter, baseten, fireworks, openai-compatible, anthropic, or anthropic-claude,
+- the **provider API key** (e.g. `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OPENAI_COMPATIBLE_API_KEY`, `ANTHROPIC_API_KEY`, `BASETEN_API_KEY`, `FIREWORKS_API_KEY`; for `anthropic-claude`, a `CLAUDE_CODE_OAUTH_TOKEN` minted with `claude setup-token` instead of an API key),
 - a **base URL** for providers that require one (the openai-compatible provider prompts for `OPENAI_COMPATIBLE_BASE_URL`),
 - a **model ID** stored as `OPENWIKI_MODEL_ID` — chosen from the provider's model list or a custom ID,
 - optional `LANGSMITH_API_KEY` for tracing.
@@ -80,8 +80,19 @@ Providers and their model options are defined in `PROVIDER_CONFIGS` in `src/cons
 | fireworks         | `FIREWORKS_API_KEY`           | `https://api.fireworks.ai/inference/v1` | GLM 5.2, Kimi K2.7 Code                                               |
 | openai-compatible | `OPENAI_COMPATIBLE_API_KEY`   | `OPENAI_COMPATIBLE_BASE_URL` (required) | custom model ID only                                                  |
 | anthropic         | `ANTHROPIC_API_KEY`           | (default, or `ANTHROPIC_BASE_URL`)      | Haiku, Sonnet, Opus                                                   |
+| anthropic-claude  | `CLAUDE_CODE_OAUTH_TOKEN`     | (Claude Agent SDK)                      | Sonnet, Opus, Haiku, Fable (subscription OAuth token, no API key)     |
 
-The default provider is `openai`, and the default model is `gpt-5.6-terra`. `resolveConfiguredProvider()` picks the provider from `OPENWIKI_PROVIDER`, then falls back to the first configured provider API key in this order: OpenAI, OpenAI-compatible, OpenRouter, Anthropic, Baseten, Fireworks, and finally `DEFAULT_PROVIDER`.
+The default provider is `openai`, and the default model is `gpt-5.6-terra`. `resolveConfiguredProvider()` picks the provider from `OPENWIKI_PROVIDER`, then falls back to the first configured provider API key in this order: OpenAI, OpenAI-compatible, OpenRouter, Anthropic, Baseten, Fireworks, Anthropic-Claude, and finally `DEFAULT_PROVIDER`.
+
+### Anthropic (Claude subscription)
+
+The `anthropic-claude` provider (CR-0001) routes inference through the Claude Agent SDK (`ChatClaudeAgentSdkModel` in `src/agent/claude-agent-sdk.ts`) instead of the raw Messages API. It authenticates with a subscription OAuth token minted by `claude setup-token`, stored as `CLAUDE_CODE_OAUTH_TOKEN` in `~/.openwiki/.env`. This unlocks the full Claude lineup (Sonnet, Opus, Haiku, Fable) for subscription users — a subscription token used on the raw `anthropic` provider is capped to Haiku, and larger models return categorical `429` errors, which OpenWiki translates into guidance to switch providers.
+
+Behavior notes (`src/agent/index.ts`):
+
+- If `CLAUDE_CODE_OAUTH_TOKEN` is missing at run time, the error message names `claude setup-token` as the remedy.
+- If `ANTHROPIC_API_KEY` is also set, OpenWiki warns that it is ignored; the adapter scrubs the metered key from the SDK subprocess environment so subscription usage is never billed against it.
+- Onboarding (`src/credentials.tsx`, `src/cli.tsx`) prompts for the subscription token instead of an API key when this provider is selected.
 
 ### Provider retry attempts
 
