@@ -160,12 +160,12 @@ flowchart TD
    `OPENWIKI_PROVIDER=anthropic-claude`.
 2. **FR-2 (SDK routing).** The system **MUST** route all `anthropic-claude`
    inference through `@anthropic-ai/claude-agent-sdk` and **MUST NOT** use the
-   raw Messages API (`ChatAnthropic`) for this provider. The SDK **SHALL** be
+   raw Messages API (`ChatAnthropic`) for this provider. The SDK **MUST** be
    exposed to DeepAgents as a LangChain-compatible chat model so
    `createDeepAgent({ model })` consumes it without modification.
 3. **FR-3 (Model lineup).** The system **MUST** offer, for this provider, model
    options Sonnet (`claude-sonnet-5`), Opus (`claude-opus-4-8`), Haiku
-   (`claude-haiku-4-5-20251001`), and Fable (`claude-fable-5`), with Sonnet as
+   (`claude-haiku-4-5`), and Fable (`claude-fable-5`), with Sonnet as
    the default, and **MUST** accept a custom model ID via `OPENWIKI_MODEL_ID`
    validated by `isValidModelId`.
 4. **FR-4 (Authentication).** The system **MUST** authenticate this provider
@@ -235,7 +235,9 @@ flowchart TD
 * `src/credentials.tsx`, `src/cli.tsx` — provider/model selection and
   provider-specific setup guidance.
 * `package.json` — add `@anthropic-ai/claude-agent-sdk` dependency.
-* `README.md`, `.deepwiki` — documentation and DeepWiki reference.
+* `README.md`, `.deepwiki` — documentation and DeepWiki reference. Note:
+  `.deepwiki` does not yet exist in the repository, so Phases 3 and 6 **MUST**
+  create it (not merely append to it).
 
 ## Scope Boundaries
 
@@ -305,8 +307,8 @@ metered API spend, aligning with the existing subscription-based
    `anthropic-claude`.
 3. Add its `PROVIDER_CONFIGS` entry: `apiKeyEnvKey:
    CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY`, `label: "Anthropic (Claude subscription)"`,
-   `modelOptions` ordered Sonnet, Opus, Haiku, Fable (Sonnet first ⇒ default via
-   `getDefaultModelId`).
+   `modelOptions` ordered Sonnet, Opus, Haiku, Fable (Sonnet first, so it is the
+   default via `getDefaultModelId`).
 4. Extend `resolveConfiguredProvider` to return `anthropic-claude` when
    `CLAUDE_CODE_OAUTH_TOKEN` is set, placed immediately before the
    `DEFAULT_PROVIDER` fallback so no existing auto-detection changes.
@@ -331,7 +333,10 @@ metered API spend, aligning with the existing subscription-based
 1. Add `@anthropic-ai/claude-agent-sdk` to `package.json` dependencies.
 2. Create `src/agent/claude-agent-sdk.ts` exporting `ChatClaudeAgentSdkModel`
    (a LangChain `BaseChatModel` adapter) that:
-   - reads `CLAUDE_CODE_OAUTH_TOKEN`, throwing the FR-7 error when absent;
+   - reads `CLAUDE_CODE_OAUTH_TOKEN`, throwing the FR-7 error when absent (a
+     defense-in-depth fallback; the primary FR-7 error is emitted earlier by the
+     `ensureProviderKey` guard per Phase 4, since that check runs before the
+     adapter is constructed);
    - builds the SDK environment with `ANTHROPIC_API_KEY` removed (FR-6);
    - maps LangChain messages and bound tool schemas to a single SDK inference
      turn with the SDK's built-in agent loop and filesystem tools disabled;
@@ -354,8 +359,16 @@ metered API spend, aligning with the existing subscription-based
    existing `emitDebug`/event mechanism).
 3. In the run error path, translate a categorical `429` from the raw
    `anthropic` provider on a non-Haiku model into the FR-8 guidance.
-4. Confirm `ensureProviderKey` already validates presence via
-   `getProviderApiKeyEnvKey(provider)` for the new provider.
+4. Ensure the FR-7 actionable error is the one that actually surfaces.
+   `ensureProviderKey` runs at `src/agent/index.ts:114`, before `createModel`
+   (`src/agent/index.ts:164`) constructs the adapter, and its generic message
+   (`"<KEY> is required to run OpenWiki with <label>."`) names the variable but
+   does **NOT** reference `claude setup-token`. The system **MUST** special-case
+   `anthropic-claude` in the presence check that fires first (`ensureProviderKey`
+   or a guard invoked before it) so the emitted error both names
+   `CLAUDE_CODE_OAUTH_TOKEN` and references `claude setup-token`, satisfying FR-7
+   and AC-7. The adapter's own token check (Phase 3) then serves only as a
+   defense-in-depth fallback for direct adapter construction.
 
 *Affected components:* `src/agent/index.ts`.
 
@@ -459,7 +472,7 @@ Given the active provider is anthropic-claude
   And OPENWIKI_MODEL_ID is unset
 When the model id is resolved
 Then it resolves to claude-sonnet-5
-  And setting OPENWIKI_MODEL_ID to claude-opus-4-8, claude-fable-5, or claude-haiku-4-5-20251001 is accepted
+  And setting OPENWIKI_MODEL_ID to claude-opus-4-8, claude-fable-5, or claude-haiku-4-5 is accepted
 ```
 
 ### AC-4: Authentication via the OAuth token (FR-4)
@@ -654,3 +667,75 @@ smallest reasonable choice and can be revised during review.
 
 * Precedent provider: `openai-chatgpt` (subscription OAuth via `ChatOpenAI`).
 * Authentication docs: https://code.claude.com/docs/en/authentication.md
+
+<!-- review-summary -->
+## Review Summary (CR-Reviewer, 2026-07-11)
+
+Reviewed against the codebase at branch `dev/claude-agent-sdk`. No sibling
+commits touched the CR's affected components after authoring (only the CR
+authoring checkpoint `b545966`), so no temporal source drift beyond the items
+below.
+
+### Findings by category
+
+- **Drift / codebase-consistency: 2**
+  1. Haiku model id mismatch. FR-3 and AC-3 specified
+     `claude-haiku-4-5-20251001`, but the existing `anthropic` provider in
+     `src/constants.ts:169` uses `claude-haiku-4-5` (no date suffix). Using a
+     divergent id would break convention and undercut Risk 4's single-point
+     model-id management.
+  2. `.deepwiki` referenced as if existing. The file is absent from the repo;
+     Phases 3 and 6 create it rather than append.
+- **Contradiction: 1**
+  1. FR-7 / AC-7 unreachable. `ensureProviderKey` (`src/agent/index.ts:114`)
+     runs before `createModel` builds the adapter (`src/agent/index.ts:164`) and
+     throws a generic message that names the env var but omits the required
+     `claude setup-token` reference. The adapter's FR-7 error (Phase 3) was
+     therefore unreachable when the token is missing, so AC-7 could never pass as
+     written.
+- **Ambiguity: 1**
+  1. FR-2 used RFC-2119 `SHALL`; normalized to `MUST` for convention
+     consistency with the rest of the CR.
+
+### Fixes applied
+
+- FR-3 and AC-3: `claude-haiku-4-5-20251001` -> `claude-haiku-4-5` (2 sites),
+  matching `src/constants.ts:169`.
+- FR-2: `SHALL` -> `MUST`.
+- Phase 4 step 4: rewritten from "confirm `ensureProviderKey` validates presence"
+  to require special-casing `anthropic-claude` in the first-firing presence guard
+  so the surfaced error names `CLAUDE_CODE_OAUTH_TOKEN` and references
+  `claude setup-token` (satisfying FR-7/AC-7); the adapter check is demoted to
+  defense-in-depth.
+- Phase 3: annotated the adapter token check as a fallback, cross-referencing the
+  Phase 4 primary guard.
+- Affected Components: noted `.deepwiki` must be created (does not yet exist).
+- Phase 1 step 3: replaced `⇒` with plain prose ("so it is the default").
+
+### Verified accurate (no change needed)
+
+- `resolveConfiguredProvider` precedence chain and the FR-5 higher-precedence key
+  list match `src/constants.ts:292-311`.
+- `MANAGED_ENV_KEYS`, `CREDENTIAL_DIAGNOSTIC_ENV_KEYS`, `DEBUG_ENV_KEYS`,
+  `isNonSecretDiagnosticKey` exist as described in `src/env.ts`.
+- `formatDebugValue` behavior (`_API_KEY` -> length-only; other secrets >10 chars
+  -> `first6...last4`) confirmed at `src/agent/index.ts:1278-1310`; FR-9's
+  special-casing requirement is correct because `CLAUDE_CODE_OAUTH_TOKEN` does not
+  end in `_API_KEY`.
+- The `anthropic` branch of `createModel` matches the Current State description
+  (`src/agent/index.ts:427-434`).
+- Credentials UI drives from `SELECTABLE_OPENWIKI_PROVIDERS` /
+  `getProviderModelOptions` with `providerUsesOAuth` selecting the paste-vs-oauth
+  step, confirming Assumption 5 and Phase 5.
+- Verification commands (`pnpm run build/typecheck/lint:check/test`) match
+  `package.json` scripts; there is no Makefile, so pnpm is the project's
+  documented workflow. NFR-4 (Node >= 20) matches `engines`.
+- Sonnet (`claude-sonnet-5`) and Opus (`claude-opus-4-8`) ids match
+  `src/constants.ts:170-171`.
+- Requirement -> AC coverage and AC -> Test coverage complete; Mermaid flowchart
+  labels are correctly quoted.
+
+### Unresolved items requiring human decision
+
+None.
+<!-- /review-summary -->
