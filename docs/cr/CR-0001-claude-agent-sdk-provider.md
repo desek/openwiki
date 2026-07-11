@@ -2,14 +2,15 @@
 id: "CR-0001"
 name: cr-claude-agent-sdk-provider
 description: Adopt the Claude Agent SDK as an inference provider path authenticated via CLAUDE_CODE_OAUTH_TOKEN, unlocking the full Claude model lineup (Haiku, Sonnet, Opus, Fable).
-status: "draft"
+status: "completed"
 date: 2026-07-11
+completed-date: 2026-07-11
 requestor: daniel@grenemark.se
 stakeholders: OpenWiki maintainers, inference-provider integrators
 priority: "high"
 target-version: 0.2.0
 source-branch: dev/claude-agent-sdk
-source-commit: 5c4142a
+source-commit: 41bfdd5
 ---
 
 # Adopt the Claude Agent SDK as a Subscription-Authenticated Inference Provider
@@ -43,7 +44,7 @@ determines model access when a subscription OAuth token is used.
   OAuth-sanctioned headers.
 - Raw Messages API (`@langchain/anthropic`, `@anthropic-ai/sdk`, `curl`) →
   Haiku only. Sonnet, Opus, and Fable return a categorical `429
-  rate_limit_error` with no `retry-after`. A subscription token is
+rate_limit_error` with no `retry-after`. A subscription token is
   intentionally not usable as a general API key.
 
 Consequently, users who own a Claude subscription cannot reach Sonnet, Opus, or
@@ -53,11 +54,11 @@ consistent.
 
 ## Change Drivers
 
-* Claude subscription holders cannot use Sonnet, Opus, or Fable for OpenWiki
+- Claude subscription holders cannot use Sonnet, Opus, or Fable for OpenWiki
   generation through the current raw Anthropic path.
-* The `openai` vs `openai-chatgpt` precedent establishes a clear, expected
+- The `openai` vs `openai-chatgpt` precedent establishes a clear, expected
   pattern for a second, subscription-authenticated vendor flavor.
-* `CLAUDE_CODE_OAUTH_TOKEN` interacts dangerously with a stale
+- `CLAUDE_CODE_OAUTH_TOKEN` interacts dangerously with a stale
   `ANTHROPIC_API_KEY` (the API key silently wins), which needs explicit,
   tested handling.
 
@@ -71,11 +72,11 @@ Provider selection and model construction are centralized:
   `resolveConfiguredProvider`, `getDefaultModelId`, `getProviderApiKeyEnvKey`,
   `providerUsesOAuth`, etc.
 - The `anthropic` provider is configured with `apiKeyEnvKey:
-  ANTHROPIC_API_KEY`, an optional `ANTHROPIC_BASE_URL` override, and model
+ANTHROPIC_API_KEY`, an optional `ANTHROPIC_BASE_URL` override, and model
   options Haiku/Sonnet/Opus.
 - `src/agent/index.ts::createModel()` branches per provider. The `anthropic`
   branch constructs `new ChatAnthropic(modelId, { apiKey, anthropicApiUrl?,
-  maxRetries })` — the raw Messages API. The `openai-chatgpt` branch reuses
+maxRetries })` — the raw Messages API. The `openai-chatgpt` branch reuses
   `ChatOpenAI` pointed at the Codex backend with a Bearer token and custom
   headers/fetch, and refreshes OAuth tokens at startup.
 - `src/env.ts` holds `MANAGED_ENV_KEYS` (the single source of truth persisted
@@ -185,7 +186,7 @@ flowchart TD
 7. **FR-7 (Missing token).** When `anthropic-claude` is selected but
    `CLAUDE_CODE_OAUTH_TOKEN` is missing or empty, the system **MUST** fail fast
    with an actionable error that names the variable and references `claude
-   setup-token`.
+setup-token`.
 8. **FR-8 (Unsupported-path guidance).** When the Agent SDK rejects a requested
    model for authentication or path reasons, the system **MUST** surface a
    clear error explaining the token, model, and path relationship. When the raw
@@ -217,25 +218,25 @@ flowchart TD
 3. **NFR-3 (Retry parity).** The adapter **MUST** honor
    `OPENWIKI_PROVIDER_RETRY_ATTEMPTS` consistently with other providers.
 4. **NFR-4 (Runtime compatibility).** The implementation **MUST** run on Node
-   >= 20 as ESM, consistent with the project's `package.json` `engines` and
-   `type: module`.
+   > = 20 as ESM, consistent with the project's `package.json` `engines` and
+   > `type: module`.
 
 ## Affected Components
 
-* `src/constants.ts` — provider union, `PROVIDER_CONFIGS`,
+- `src/constants.ts` — provider union, `PROVIDER_CONFIGS`,
   `SELECTABLE_OPENWIKI_PROVIDERS`, model options, `resolveConfiguredProvider`,
   new `CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY`.
-* `src/env.ts` — add the token to `MANAGED_ENV_KEYS` (persistence, masked
+- `src/env.ts` — add the token to `MANAGED_ENV_KEYS` (persistence, masked
   diagnostics, debug-dump derivation).
-* `src/agent/claude-agent-sdk.ts` — **new file**: SDK wrapper and
+- `src/agent/claude-agent-sdk.ts` — **new file**: SDK wrapper and
   `ChatClaudeAgentSdkModel` LangChain adapter, token detection,
   `ANTHROPIC_API_KEY` scrubbing, message/tool bridging, error mapping.
-* `src/agent/index.ts` — new `createModel` branch, precedence warning, and
+- `src/agent/index.ts` — new `createModel` branch, precedence warning, and
   categorical-`429` translation in the run error path.
-* `src/credentials.tsx`, `src/cli.tsx` — provider/model selection and
+- `src/credentials.tsx`, `src/cli.tsx` — provider/model selection and
   provider-specific setup guidance.
-* `package.json` — add `@anthropic-ai/claude-agent-sdk` dependency.
-* `README.md`, `.deepwiki` — documentation and DeepWiki reference. Note:
+- `package.json` — add `@anthropic-ai/claude-agent-sdk` dependency.
+- `README.md`, `.deepwiki` — documentation and DeepWiki reference. Note:
   `.deepwiki` does not yet exist in the repository, so Phases 3 and 6 **MUST**
   create it (not merely append to it).
 
@@ -243,37 +244,37 @@ flowchart TD
 
 ### In Scope
 
-* A new `anthropic-claude` provider backed by `@anthropic-ai/claude-agent-sdk`.
-* `CLAUDE_CODE_OAUTH_TOKEN` detection, precedence, and error messaging.
-* Full model lineup (Haiku, Sonnet, Opus, Fable) selection and defaults.
-* Secret hygiene for the token in diagnostics and debug output.
-* Onboarding/credentials UI entries and README/`.deepwiki` updates.
+- A new `anthropic-claude` provider backed by `@anthropic-ai/claude-agent-sdk`.
+- `CLAUDE_CODE_OAUTH_TOKEN` detection, precedence, and error messaging.
+- Full model lineup (Haiku, Sonnet, Opus, Fable) selection and defaults.
+- Secret hygiene for the token in diagnostics and debug output.
+- Onboarding/credentials UI entries and README/`.deepwiki` updates.
 
 ### Out of Scope ("Here, But Not Further")
 
-* A browser-based OAuth login flow that mints the token inside OpenWiki. The
+- A browser-based OAuth login flow that mints the token inside OpenWiki. The
   token is generated out of band by `claude setup-token`; OpenWiki only
   consumes it. A captured-login flow is deferred.
-* Automatic token refresh or expiry management. The token is treated as a
+- Automatic token refresh or expiry management. The token is treated as a
   long-lived secret the user rotates manually (unlike the `openai-chatgpt`
   refresh loop).
-* Changes to the raw `anthropic` provider's behavior beyond the new
+- Changes to the raw `anthropic` provider's behavior beyond the new
   `429`-translation guidance in FR-8.
-* Adopting the Agent SDK's own agent loop, tools, or filesystem in place of
+- Adopting the Agent SDK's own agent loop, tools, or filesystem in place of
   DeepAgents. The SDK is used strictly for authenticated model inference.
-* Regenerating OpenWiki wiki pages under `openwiki/` (produced by the scheduled
+- Regenerating OpenWiki wiki pages under `openwiki/` (produced by the scheduled
   workflow, not hand-edited).
 
 ## Alternative Approaches Considered
 
-* **Reauthenticate the existing `ChatAnthropic` path with the OAuth token as a
+- **Reauthenticate the existing `ChatAnthropic` path with the OAuth token as a
   Bearer credential.** Rejected: the raw Messages API is categorically capped
   to Haiku for subscription tokens regardless of headers, so it cannot serve
   Sonnet, Opus, or Fable.
-* **Shell out to the `claude` CLI per inference call.** Rejected: heavier
+- **Shell out to the `claude` CLI per inference call.** Rejected: heavier
   process management, harder streaming and tool bridging, and a coarser error
   surface than the SDK.
-* **Replace the `anthropic` provider outright.** Rejected: breaks existing
+- **Replace the `anthropic` provider outright.** Rejected: breaks existing
   metered API-key users; the additive second-flavor pattern matches the
   established `openai` / `openai-chatgpt` precedent.
 
@@ -306,14 +307,14 @@ metered API spend, aligning with the existing subscription-based
 2. Extend the `OpenWikiProvider` union and `SELECTABLE_OPENWIKI_PROVIDERS` with
    `anthropic-claude`.
 3. Add its `PROVIDER_CONFIGS` entry: `apiKeyEnvKey:
-   CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY`, `label: "Anthropic (Claude subscription)"`,
+CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY`, `label: "Anthropic (Claude subscription)"`,
    `modelOptions` ordered Sonnet, Opus, Haiku, Fable (Sonnet first, so it is the
    default via `getDefaultModelId`).
 4. Extend `resolveConfiguredProvider` to return `anthropic-claude` when
    `CLAUDE_CODE_OAUTH_TOKEN` is set, placed immediately before the
    `DEFAULT_PROVIDER` fallback so no existing auto-detection changes.
 
-*Affected components:* `src/constants.ts`.
+_Affected components:_ `src/constants.ts`.
 
 ### Phase 2 — Environment management and secret hygiene
 
@@ -326,7 +327,7 @@ metered API spend, aligning with the existing subscription-based
 3. Confirm the diagnostics preview treats it as a secret (it is not in
    `isNonSecretDiagnosticKey`, so it is masked by default).
 
-*Affected components:* `src/env.ts`, `src/agent/index.ts`.
+_Affected components:_ `src/env.ts`, `src/agent/index.ts`.
 
 ### Phase 3 — Claude Agent SDK model adapter
 
@@ -348,7 +349,7 @@ metered API spend, aligning with the existing subscription-based
    streaming shape) against DeepWiki `anthropics/claude-agent-sdk` before
    finalizing, and record it in `.deepwiki`.
 
-*Affected components:* `src/agent/claude-agent-sdk.ts`, `package.json`,
+_Affected components:_ `src/agent/claude-agent-sdk.ts`, `package.json`,
 `.deepwiki`.
 
 ### Phase 4 — Wire into `createModel` and auth guards
@@ -370,7 +371,7 @@ metered API spend, aligning with the existing subscription-based
    and AC-7. The adapter's own token check (Phase 3) then serves only as a
    defense-in-depth fallback for direct adapter construction.
 
-*Affected components:* `src/agent/index.ts`.
+_Affected components:_ `src/agent/index.ts`.
 
 ### Phase 5 — Onboarding and credentials UI
 
@@ -378,9 +379,9 @@ metered API spend, aligning with the existing subscription-based
    `SELECTABLE_OPENWIKI_PROVIDERS` and its models from
    `getProviderModelOptions`.
 2. Add provider-specific setup guidance (paste a token from `claude
-   setup-token`) in the api-key setup step for this provider.
+setup-token`) in the api-key setup step for this provider.
 
-*Affected components:* `src/credentials.tsx`, `src/cli.tsx`.
+_Affected components:_ `src/credentials.tsx`, `src/cli.tsx`.
 
 ### Phase 6 — Documentation
 
@@ -388,7 +389,7 @@ metered API spend, aligning with the existing subscription-based
    provider-list sentence.
 2. Add `anthropics/claude-agent-sdk` to `.deepwiki`.
 
-*Affected components:* `README.md`, `.deepwiki`.
+_Affected components:_ `README.md`, `.deepwiki`.
 
 ### Implementation Flow
 
@@ -419,31 +420,31 @@ flowchart LR
 
 ### Tests to Add
 
-| Test File | Test Name | Description | Inputs | Expected Output |
-|-----------|-----------|-------------|--------|-----------------|
-| `test/constants.test.ts` | `registers anthropic-claude provider` | Provider is in `SELECTABLE_OPENWIKI_PROVIDERS` and `PROVIDER_CONFIGS` with the four models | provider id | present with Sonnet/Opus/Haiku/Fable options |
-| `test/constants.test.ts` | `defaults anthropic-claude to Sonnet` | `getDefaultModelId("anthropic-claude")` returns Sonnet | provider id | `claude-sonnet-5` |
-| `test/constants.test.ts` | `auto-detects token only as lowest precedence` | `resolveConfiguredProvider` returns `anthropic-claude` when only the token is set; returns prior providers when their keys are set | env maps | correct provider per FR-5 |
-| `test/env.test.ts` | `token is a managed masked secret` | Token appears in `MANAGED_ENV_KEYS` and diagnostics preview is masked | env with token | masked preview, not plaintext |
-| `test/claude-agent-provider.test.ts` | `createModel returns SDK adapter` | `createModel("anthropic-claude", ...)` yields `ChatClaudeAgentSdkModel` | provider, model id | adapter instance, not `ChatAnthropic` |
-| `test/claude-agent-provider.test.ts` | `missing token throws actionable error` | Selecting provider without token fails fast | no token | error names variable and `claude setup-token` |
-| `test/claude-agent-provider.test.ts` | `scrubs ANTHROPIC_API_KEY from SDK env` | With both set, SDK env excludes `ANTHROPIC_API_KEY` and a warning is emitted | both credentials | key absent from SDK env, warning event |
-| `test/claude-agent-sdk.test.ts` | `bridges messages and tool calls` | Mocked `query()` stream maps to `AIMessageChunk` with `tool_calls` | mocked SDK stream | LangChain chunks with text and tool_calls |
-| `test/claude-agent-sdk.test.ts` | `maps auth 429 to guidance error` | SDK auth/`429` failure maps to FR-8 message | mocked failure | error explains token/model/path |
-| `test/redaction.test.ts` | `redacts CLAUDE_CODE_OAUTH_TOKEN in debug` | `formatDebugValue` returns length-only for the token | token value | `set(length=N)`, no `first6...last4` |
+| Test File                            | Test Name                                      | Description                                                                                                                        | Inputs             | Expected Output                               |
+| ------------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------- |
+| `test/constants.test.ts`             | `registers anthropic-claude provider`          | Provider is in `SELECTABLE_OPENWIKI_PROVIDERS` and `PROVIDER_CONFIGS` with the four models                                         | provider id        | present with Sonnet/Opus/Haiku/Fable options  |
+| `test/constants.test.ts`             | `defaults anthropic-claude to Sonnet`          | `getDefaultModelId("anthropic-claude")` returns Sonnet                                                                             | provider id        | `claude-sonnet-5`                             |
+| `test/constants.test.ts`             | `auto-detects token only as lowest precedence` | `resolveConfiguredProvider` returns `anthropic-claude` when only the token is set; returns prior providers when their keys are set | env maps           | correct provider per FR-5                     |
+| `test/env.test.ts`                   | `token is a managed masked secret`             | Token appears in `MANAGED_ENV_KEYS` and diagnostics preview is masked                                                              | env with token     | masked preview, not plaintext                 |
+| `test/claude-agent-provider.test.ts` | `createModel returns SDK adapter`              | `createModel("anthropic-claude", ...)` yields `ChatClaudeAgentSdkModel`                                                            | provider, model id | adapter instance, not `ChatAnthropic`         |
+| `test/claude-agent-provider.test.ts` | `missing token throws actionable error`        | Selecting provider without token fails fast                                                                                        | no token           | error names variable and `claude setup-token` |
+| `test/claude-agent-provider.test.ts` | `scrubs ANTHROPIC_API_KEY from SDK env`        | With both set, SDK env excludes `ANTHROPIC_API_KEY` and a warning is emitted                                                       | both credentials   | key absent from SDK env, warning event        |
+| `test/claude-agent-sdk.test.ts`      | `bridges messages and tool calls`              | Mocked `query()` stream maps to `AIMessageChunk` with `tool_calls`                                                                 | mocked SDK stream  | LangChain chunks with text and tool_calls     |
+| `test/claude-agent-sdk.test.ts`      | `maps auth 429 to guidance error`              | SDK auth/`429` failure maps to FR-8 message                                                                                        | mocked failure     | error explains token/model/path               |
+| `test/redaction.test.ts`             | `redacts CLAUDE_CODE_OAUTH_TOKEN in debug`     | `formatDebugValue` returns length-only for the token                                                                               | token value        | `set(length=N)`, no `first6...last4`          |
 
 ### Tests to Modify
 
-| Test File | Test Name | Current Behavior | New Behavior | Reason for Change |
-|-----------|-----------|------------------|--------------|-------------------|
-| `test/env.test.ts` | env managed-keys snapshot/order test | Asserts current `MANAGED_ENV_KEYS` set | Includes `CLAUDE_CODE_OAUTH_TOKEN` | New managed key added |
-| `test/credentials.test.ts` | provider-list rendering test | Lists current providers | Includes `anthropic-claude` and its models | New provider surfaced in UI |
+| Test File                  | Test Name                            | Current Behavior                       | New Behavior                               | Reason for Change           |
+| -------------------------- | ------------------------------------ | -------------------------------------- | ------------------------------------------ | --------------------------- |
+| `test/env.test.ts`         | env managed-keys snapshot/order test | Asserts current `MANAGED_ENV_KEYS` set | Includes `CLAUDE_CODE_OAUTH_TOKEN`         | New managed key added       |
+| `test/credentials.test.ts` | provider-list rendering test         | Lists current providers                | Includes `anthropic-claude` and its models | New provider surfaced in UI |
 
 ### Tests to Remove
 
-| Test File | Test Name | Reason for Removal |
-|-----------|-----------|-------------------|
-| Not applicable | — | No existing functionality is removed; all changes are additive. |
+| Test File      | Test Name | Reason for Removal                                              |
+| -------------- | --------- | --------------------------------------------------------------- |
+| Not applicable | —         | No existing functionality is removed; all changes are additive. |
 
 ## Acceptance Criteria
 
@@ -551,33 +552,33 @@ Then the raw anthropic ChatAnthropic path is used exactly as before
 
 ### Build & Compilation
 
-- [ ] Code compiles/builds without errors (`pnpm run build`)
-- [ ] No new compiler warnings introduced (`pnpm run typecheck`)
+- [x] Code compiles/builds without errors (`pnpm run build`)
+- [x] No new compiler warnings introduced (`pnpm run typecheck`)
 
 ### Linting & Code Style
 
-- [ ] All linter checks pass with zero warnings/errors (`pnpm run lint:check`)
-- [ ] Code follows project coding conventions (small single-purpose files,
+- [x] All linter checks pass with zero warnings/errors (`pnpm run lint:check`)
+- [x] Code follows project coding conventions (small single-purpose files,
       hierarchical naming, docstrings with `@agents-index`)
-- [ ] Any linter exceptions are documented with justification
+- [x] Any linter exceptions are documented with justification
 
 ### Test Execution
 
-- [ ] All existing tests pass (`pnpm test`)
-- [ ] All new tests pass
-- [ ] Test coverage meets project requirements for changed code
+- [x] All existing tests pass (`pnpm test`)
+- [x] All new tests pass
+- [x] Test coverage meets project requirements for changed code
 
 ### Documentation
 
-- [ ] Inline docstrings added for the new adapter and constants
-- [ ] README updated with the new provider subsection
-- [ ] `.deepwiki` updated with `anthropics/claude-agent-sdk`
+- [x] Inline docstrings added for the new adapter and constants
+- [x] README updated with the new provider subsection
+- [x] `.deepwiki` updated with `anthropics/claude-agent-sdk`
 
 ### Code Review
 
-- [ ] Changes submitted via pull request
-- [ ] PR title follows Conventional Commits format
-- [ ] Code review completed and approved
+- [x] Changes submitted via pull request
+- [x] PR title follows Conventional Commits format
+- [x] Code review completed and approved
 - [ ] Changes squash-merged to maintain linear history
 
 ### Verification Commands
@@ -624,10 +625,10 @@ IDs are centralized in `PROVIDER_CONFIGS` for a single-point update.
 
 ## Dependencies
 
-* New runtime dependency: `@anthropic-ai/claude-agent-sdk`.
-* External tool `claude setup-token` (Claude Code CLI) to mint
+- New runtime dependency: `@anthropic-ai/claude-agent-sdk`.
+- External tool `claude setup-token` (Claude Code CLI) to mint
   `CLAUDE_CODE_OAUTH_TOKEN`; the token is inference-only and out-of-band.
-* DeepWiki reference `anthropics/claude-agent-sdk` for API validation.
+- DeepWiki reference `anthropics/claude-agent-sdk` for API validation.
 
 ## Estimated Effort
 
@@ -665,10 +666,11 @@ smallest reasonable choice and can be revised during review.
 
 ## Related Items
 
-* Precedent provider: `openai-chatgpt` (subscription OAuth via `ChatOpenAI`).
-* Authentication docs: https://code.claude.com/docs/en/authentication.md
+- Precedent provider: `openai-chatgpt` (subscription OAuth via `ChatOpenAI`).
+- Authentication docs: https://code.claude.com/docs/en/authentication.md
 
 <!-- review-summary -->
+
 ## Review Summary (CR-Reviewer, 2026-07-11)
 
 Reviewed against the codebase at branch `dev/claude-agent-sdk`. No sibling

@@ -498,10 +498,7 @@ function isCategorical429Error(error: unknown): boolean {
 
   const message = typeof error.message === "string" ? error.message : "";
 
-  return (
-    message.includes("429") ||
-    /rate[_\s-]?limit/iu.test(message)
-  );
+  return message.includes("429") || /rate[_\s-]?limit/iu.test(message);
 }
 
 function ensureProviderBaseUrl(provider: OpenWikiProvider): void {
