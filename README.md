@@ -272,8 +272,14 @@ OPENWIKI_PROVIDER=anthropic-claude openwiki personal --init
 The wizard asks for the `CLAUDE_CODE_OAUTH_TOKEN` value (not an Anthropic API
 key) and stores it in `~/.openwiki/.env`. Because this provider authenticates
 through the subscription token, it never reads `ANTHROPIC_API_KEY`, so
-subscription usage is never silently billed against a metered key. Treat the
-token like a password.
+subscription usage is never silently billed against a metered key. If both
+`CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` are present, OpenWiki emits a
+warning and uses the subscription token. Treat the token like a password.
+
+If you instead run the raw `anthropic` provider with a subscription token and
+request a non-Haiku model, the Messages API returns a categorical `429`;
+OpenWiki translates that into guidance to switch to `anthropic-claude` with
+`CLAUDE_CODE_OAUTH_TOKEN`. See CR-0001.
 
 ### Provider retry attempts
 
