@@ -12,7 +12,7 @@ The documentation agent is implemented in `src/agent/`. It takes a command (`cha
 4. Create a run context from Git state and prior update metadata.
 5. Snapshot the current `openwiki/` content hash (before the run).
 6. Build the system prompt and user prompt.
-7. Create the provider-specific model client (`ChatAnthropic`, `ChatOpenRouter`, or `ChatOpenAI`).
+7. Create the provider-specific model client (`ChatAnthropic`, `ChatClaudeAgentSdkModel`, `ChatOpenRouter`, or `ChatOpenAI`).
 8. Create a DeepAgents `LocalShellBackend` rooted at the repository with a SQLite checkpointer.
 9. Stream messages and tool events back to the CLI.
 10. For `init` and `update`, compare the post-run content snapshot to the pre-run snapshot. Write `openwiki/.last-update.json` **only if the content changed**.
@@ -24,6 +24,7 @@ Chat runs skip metadata writes entirely.
 `createModel()` in `src/agent/index.ts` branches by provider:
 
 - **anthropic**: `new ChatAnthropic(modelId, { apiKey, anthropicApiUrl? })` — uses `@langchain/anthropic` directly. When `ANTHROPIC_BASE_URL` is set, the resolved alternative base URL is passed as `anthropicApiUrl` so requests can be routed to a self-hosted or proxied Anthropic-compatible endpoint instead of the default API.
+- **anthropic-claude**: `new ChatClaudeAgentSdkModel({ model, maxRetries })` — routes inference through the Claude Agent SDK adapter in `src/agent/claude-agent-sdk.ts` instead of the raw Messages API. It authenticates with the subscription OAuth token `CLAUDE_CODE_OAUTH_TOKEN` (minted via `claude setup-token`) rather than an API key, scrubs `ANTHROPIC_API_KEY` from the SDK subprocess environment, and disables the SDK's own agent loop so DeepAgents keeps the tool-calling loop. See [architecture/overview.md](../architecture/overview.md) and [cli/usage.md](../cli/usage.md) for the provider table and CR-0001 background.
 - **openai-chatgpt**: `new ChatOpenAI({ apiKey: tokens.access, model, useResponsesApi: true, zdrEnabled: true, streaming: true, configuration: { baseURL: CODEX_RESPONSES_BASE_URL, defaultHeaders, fetch } })` — uses ChatGPT OAuth tokens instead of an API key. Tokens are refreshed before model creation via `ensureFreshChatGptTokens()` in `src/agent/openai-chatgpt-oauth.ts`. The Codex backend requires `store: false` (`zdrEnabled`) and streaming for all requests. If tokens are missing, the run aborts with a clear message directing the user to sign in.
 - **openrouter**: `new ChatOpenRouter({ apiKey, baseURL, model, siteName: "OpenWiki" })` — uses the selected OpenRouter model directly.
 - **openai**: `new ChatOpenAI({ apiKey, model, useResponsesApi: true })` — uses OpenAI's Responses API for official OpenAI calls.

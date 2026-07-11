@@ -279,7 +279,7 @@ warning and uses the subscription token. Treat the token like a password.
 If you instead run the raw `anthropic` provider with a subscription token and
 request a non-Haiku model, the Messages API returns a categorical `429`;
 OpenWiki translates that into guidance to switch to `anthropic-claude` with
-`CLAUDE_CODE_OAUTH_TOKEN`. See CR-0001.
+`CLAUDE_CODE_OAUTH_TOKEN`.
 
 ### Provider retry attempts
 

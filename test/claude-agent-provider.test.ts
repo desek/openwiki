@@ -41,6 +41,7 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { HumanMessage } from "@langchain/core/messages";
 import {
   createModel,
+  translateAnthropicCategorical429,
   warnOnAnthropicApiKeyFootgun,
 } from "../src/agent/index.ts";
 import { ChatClaudeAgentSdkModel } from "../src/agent/claude-agent-sdk.ts";
@@ -127,5 +128,59 @@ describe("ANTHROPIC_API_KEY footgun (FR-6, AC-6, Risk 2)", () => {
     });
 
     expect(events).toHaveLength(0);
+  });
+});
+
+describe("translateAnthropicCategorical429 on the raw anthropic path", () => {
+  const categorical429 = () =>
+    Object.assign(new Error("429 rate_limit_error"), { status: 429 });
+
+  test("translates a categorical 429 on a non-Haiku model into switch guidance", () => {
+    const original = categorical429();
+    const translated = translateAnthropicCategorical429(
+      original,
+      "anthropic",
+      "claude-sonnet-5",
+    );
+
+    expect(translated).toBeInstanceOf(Error);
+    const message = (translated as Error).message;
+    expect(message).toContain("anthropic-claude");
+    expect(message).toContain("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(message).toContain("claude setup-token");
+    expect((translated as Error).cause).toBe(original);
+  });
+
+  test("passes a categorical 429 through unchanged for a Haiku model", () => {
+    const original = categorical429();
+    expect(
+      translateAnthropicCategorical429(
+        original,
+        "anthropic",
+        "claude-haiku-4-5",
+      ),
+    ).toBe(original);
+  });
+
+  test("passes errors through unchanged for other providers", () => {
+    const original = categorical429();
+    expect(
+      translateAnthropicCategorical429(
+        original,
+        "anthropic-claude",
+        "claude-sonnet-5",
+      ),
+    ).toBe(original);
+  });
+
+  test("passes non-429 errors through unchanged", () => {
+    const original = new Error("boom");
+    expect(
+      translateAnthropicCategorical429(
+        original,
+        "anthropic",
+        "claude-sonnet-5",
+      ),
+    ).toBe(original);
   });
 });

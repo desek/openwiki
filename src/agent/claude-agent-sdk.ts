@@ -76,12 +76,16 @@ const BRIDGE_TOOL_PREFIX = `mcp__${BRIDGE_MCP_SERVER_NAME}__`;
 
 /**
  * Appends a diagnostic line to the file named by `OPENWIKI_SDK_TRACE`, when
- * set. Exists because Agent SDK stream behavior can only be diagnosed from a
- * full run; the trace records every raw SDK message and every emitted chunk
- * without touching normal output. No-op (and never throws) when unset.
+ * set. Exists because Agent SDK stream behavior (message ordering, dropped
+ * tool calls, terminal error results) can only be diagnosed from a full run;
+ * the trace records the SHAPE of the stream, never its content. Callers must
+ * pass pre-sanitized payloads: message types/subtypes, chunk text lengths,
+ * tool names, and error discriminators only — no prompt text, tool arguments,
+ * or credentials, matching the FR-9 hygiene the debug pipeline applies.
+ * No-op (and never throws) when the env var is unset.
  *
  * @param kind - Short event tag (e.g. `message`, `chunk`, `stream-error`).
- * @param payload - JSON-serializable event detail; stringified best-effort.
+ * @param payload - Pre-sanitized, JSON-serializable, content-free event shape.
  */
 function traceSdk(kind: string, payload: unknown): void {
   const path = process.env.OPENWIKI_SDK_TRACE;
@@ -91,7 +95,7 @@ function traceSdk(kind: string, payload: unknown): void {
   try {
     appendFileSync(
       path,
-      `${JSON.stringify({ kind, payload })}\n`.slice(0, 20000),
+      `${JSON.stringify({ kind, payload })}\n`.slice(0, 2000),
     );
   } catch {
     // Tracing must never affect inference.
@@ -610,18 +614,28 @@ export class ChatClaudeAgentSdkModel extends BaseChatModel<ChatClaudeAgentSdkCal
         });
 
         for await (const message of stream) {
-          traceSdk("message", message);
+          const messageView = message as unknown as SdkMessageView;
+          traceSdk("message", {
+            type: messageView.type,
+            subtype: messageView.subtype,
+          });
           const chunk = this.translateMessage(message, turnState);
           if (!chunk) {
             continue;
           }
           yieldedAny = true;
-          if ((chunk.message as AIMessageChunk).tool_call_chunks?.length) {
+          const toolCallChunks = (chunk.message as AIMessageChunk)
+            .tool_call_chunks;
+          if (toolCallChunks?.length) {
             turnState.emittedToolCalls = true;
           }
           traceSdk("chunk", {
-            text: chunk.text,
-            toolCallChunks: (chunk.message as AIMessageChunk).tool_call_chunks,
+            textLength: chunk.text.length,
+            toolCalls: toolCallChunks?.map((toolChunk) => ({
+              name: toolChunk.name,
+              index: toolChunk.index,
+              argsLength: toolChunk.args?.length ?? 0,
+            })),
           });
           if (chunk.text) {
             await runManager?.handleLLMNewToken(chunk.text);
@@ -635,7 +649,12 @@ export class ChatClaudeAgentSdkModel extends BaseChatModel<ChatClaudeAgentSdkCal
       } catch (error) {
         traceSdk("stream-error", {
           emittedToolCalls: turnState.emittedToolCalls,
-          message: error instanceof Error ? error.message : String(error),
+          // Error text can embed model output; keep only enough to identify
+          // the failure class.
+          message: (error instanceof Error
+            ? error.message
+            : String(error)
+          ).slice(0, 200),
         });
         if (error instanceof AbortError) {
           throw error;

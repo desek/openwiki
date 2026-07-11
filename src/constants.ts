@@ -182,7 +182,6 @@ export const PROVIDER_CONFIGS: Record<OpenWikiProvider, ProviderConfig> = {
   },
   "anthropic-claude": {
     apiKeyEnvKey: CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY,
-    authMethod: "api-key",
     label: "Anthropic (Claude subscription)",
     modelOptions: [
       { id: "claude-sonnet-5", label: "Sonnet" },

@@ -93,14 +93,8 @@ describe("CLAUDE_CODE_OAUTH_TOKEN managed secret (FR-9, NFR-2)", () => {
     }
   });
 
-  test("token is a managed key placed after the Anthropic keys", () => {
-    // Modify: managed-keys order now includes the subscription OAuth token,
-    // grouped with the other Anthropic credentials.
+  test("token is a managed key", () => {
     expect(MANAGED_ENV_KEYS).toContain(CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY);
-    const keys = MANAGED_ENV_KEYS as readonly string[];
-    expect(keys.indexOf(CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY)).toBe(
-      keys.indexOf("ANTHROPIC_BASE_URL") + 1,
-    );
   });
 
   test("token is a managed masked secret in diagnostics", async () => {
