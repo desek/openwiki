@@ -37,6 +37,7 @@ import type {
 } from "./types.js";
 import {
   ANTHROPIC_BASE_URL_ENV_KEY,
+  CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY,
   getDefaultModelId,
   getProviderApiKeyEnvKey,
   getProviderBaseUrlEnvKey,
@@ -1288,7 +1289,10 @@ function formatDebugValue(key: string, value: string | undefined): string {
     return formatUrlDebugValue(value);
   }
 
-  if (key.endsWith("_API_KEY")) {
+  // The subscription OAuth token is a secret that does not end in `_API_KEY`,
+  // so it would otherwise fall through to the `first6...last4` preview branch.
+  // Mask it to length-only to keep it out of debug output (FR-9).
+  if (key.endsWith("_API_KEY") || key === CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY) {
     return `set(length=${value.length})`;
   }
 
