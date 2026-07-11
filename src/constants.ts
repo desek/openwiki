@@ -15,6 +15,13 @@ export const OPENAI_CHATGPT_EMAIL_ENV_KEY = "OPENAI_CHATGPT_EMAIL";
 export const OPENAI_CHATGPT_PLAN_ENV_KEY = "OPENAI_CHATGPT_PLAN";
 export const ANTHROPIC_API_KEY_ENV_KEY = "ANTHROPIC_API_KEY";
 export const ANTHROPIC_BASE_URL_ENV_KEY = "ANTHROPIC_BASE_URL";
+/**
+ * Subscription OAuth token minted out of band by `claude setup-token`. Used to
+ * authenticate the `anthropic-claude` provider through the Claude Agent SDK,
+ * which sends the OAuth-sanctioned headers that unlock the full Claude lineup
+ * (Haiku, Sonnet, Opus, Fable) for subscription users.
+ */
+export const CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY = "CLAUDE_CODE_OAUTH_TOKEN";
 export const OPENROUTER_API_KEY_ENV_KEY = "OPENROUTER_API_KEY";
 export const OPENWIKI_PROVIDER_ENV_KEY = "OPENWIKI_PROVIDER";
 export const OPENWIKI_MODEL_ID_ENV_KEY = "OPENWIKI_MODEL_ID";
@@ -54,6 +61,7 @@ export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 export type OpenWikiProvider =
   | "anthropic"
+  | "anthropic-claude"
   | "baseten"
   | "fireworks"
   | "openai"
@@ -115,6 +123,7 @@ export const SELECTABLE_OPENWIKI_PROVIDERS = [
   "openai",
   "openai-chatgpt",
   "anthropic",
+  "anthropic-claude",
   "openrouter",
   "openai-compatible",
   "fireworks",
@@ -169,6 +178,17 @@ export const PROVIDER_CONFIGS: Record<OpenWikiProvider, ProviderConfig> = {
       { id: "claude-haiku-4-5", label: "Haiku" },
       { id: "claude-sonnet-5", label: "Sonnet" },
       { id: "claude-opus-4-8", label: "Opus" },
+    ],
+  },
+  "anthropic-claude": {
+    apiKeyEnvKey: CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY,
+    authMethod: "api-key",
+    label: "Anthropic (Claude subscription)",
+    modelOptions: [
+      { id: "claude-sonnet-5", label: "Sonnet" },
+      { id: "claude-opus-4-8", label: "Opus" },
+      { id: "claude-haiku-4-5", label: "Haiku" },
+      { id: "claude-fable-5", label: "Fable" },
     ],
   },
   openrouter: {
@@ -306,7 +326,9 @@ export function resolveConfiguredProvider(
               ? "baseten"
               : env[FIREWORKS_API_KEY_ENV_KEY]
                 ? "fireworks"
-                : DEFAULT_PROVIDER)
+                : env[CLAUDE_CODE_OAUTH_TOKEN_ENV_KEY]
+                  ? "anthropic-claude"
+                  : DEFAULT_PROVIDER)
   );
 }
 
