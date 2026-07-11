@@ -1768,11 +1768,18 @@ function ChatInput({
       }
 
       setError(null);
-      setNotice(`Paste your ${getProviderLabel(currentProvider)} API key.`);
+      setNotice(
+        currentProvider === "anthropic-claude"
+          ? "Run `claude setup-token` to mint a subscription token, then paste it here (not an Anthropic API key)."
+          : `Paste your ${getProviderLabel(currentProvider)} API key.`,
+      );
       setSecretInputMode({
         envKey: getProviderApiKeyEnvKey(currentProvider),
         kind: "api-key",
-        label: `${getProviderLabel(currentProvider)} API key`,
+        label:
+          currentProvider === "anthropic-claude"
+            ? `${getProviderLabel(currentProvider)} token`
+            : `${getProviderLabel(currentProvider)} API key`,
         provider: currentProvider,
       });
       setInputState({ cursorPosition: 0, value: "" });

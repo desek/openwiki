@@ -2260,6 +2260,31 @@ function Prompt({
   }
 
   if (step === "api-key") {
+    if (provider === "anthropic-claude") {
+      return (
+        <Box flexDirection="column">
+          <Text>
+            Paste your Claude subscription token for{" "}
+            {getProviderLabel(provider)}.
+          </Text>
+          <Text color="gray">
+            Run <Text color="yellow">claude setup-token</Text> in a terminal to
+            mint a one-year subscription OAuth token, then paste it below. This
+            token unlocks the full Claude lineup (Haiku, Sonnet, Opus, Fable);
+            it is not an Anthropic API key.
+          </Text>
+          <BorderedInput
+            maxDisplayWidth={inputDisplayWidth}
+            marginTop={1}
+            prefix={`${getProviderApiKeyEnvKey(provider)}=`}
+            secret
+            value={input}
+          />
+          <Text color="gray">Press Enter to save it.</Text>
+        </Box>
+      );
+    }
+
     return (
       <Box flexDirection="column">
         <Text>Paste your {getProviderLabel(provider)} API key.</Text>
