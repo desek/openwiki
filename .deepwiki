@@ -1,0 +1,8 @@
+# DeepWiki reference repositories
+
+# Repositories to consult via the deepwiki MCP for dependency implementation
+# details. Each entry is a GitHub `owner/repo` slug. DeepWiki answers against
+# the latest indexed version, so verify version-sensitive details against the
+# vendored source under node_modules for the pinned version.
+
+anthropics/claude-agent-sdk
