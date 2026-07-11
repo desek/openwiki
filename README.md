@@ -188,7 +188,7 @@ notes.
 
 ## Customizing
 
-OpenWiki supports OpenAI (with an API key or a ChatGPT login), OpenRouter, Fireworks, Baseten, an OpenAI-compatible provider, and Anthropic out of the box. The onboarding default is OpenAI with `gpt-5.6-terra`, and each inference provider also includes pre-defined model options plus support for custom model IDs.
+OpenWiki supports OpenAI (with an API key or a ChatGPT login), OpenRouter, Fireworks, Baseten, an OpenAI-compatible provider, and Anthropic (with an API key or a Claude subscription login) out of the box. The onboarding default is OpenAI with `gpt-5.6-terra`, and each inference provider also includes pre-defined model options plus support for custom model IDs.
 
 ### Alternative base URLs
 
@@ -247,6 +247,33 @@ automatically when it expires, so you normally never edit them by hand. Treat th
 refresh token like a password.
 
 Base URLs (and all credentials) can be set in your environment or stored in `~/.openwiki/.env`.
+
+### Anthropic (Claude subscription)
+
+The `anthropic-claude` provider routes inference through the Claude Agent SDK
+using your Claude subscription instead of a metered API key. The default
+`anthropic` provider authenticates the raw Messages API with `ANTHROPIC_API_KEY`,
+where a subscription OAuth token is capped to Haiku and the larger models return
+categorical `429` errors. The Agent SDK path sends the OAuth-sanctioned headers,
+which unlocks the full Claude model lineup (Sonnet, Opus, Haiku, and Fable) for
+subscription users.
+
+Instead of pasting an API key, mint a subscription token with the Claude CLI and
+paste it when the setup wizard prompts for credentials:
+
+```bash
+claude setup-token
+# then
+OPENWIKI_PROVIDER=anthropic-claude openwiki code --init
+# or
+OPENWIKI_PROVIDER=anthropic-claude openwiki personal --init
+```
+
+The wizard asks for the `CLAUDE_CODE_OAUTH_TOKEN` value (not an Anthropic API
+key) and stores it in `~/.openwiki/.env`. Because this provider authenticates
+through the subscription token, it never reads `ANTHROPIC_API_KEY`, so
+subscription usage is never silently billed against a metered key. Treat the
+token like a password.
 
 ### Provider retry attempts
 
