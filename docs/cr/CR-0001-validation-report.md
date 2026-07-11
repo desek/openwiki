@@ -5,6 +5,16 @@ Date: 2026-07-11
 Branch: `dev/claude-agent-sdk` | Branch base: `origin/main` @ `5c4142a` | HEAD: `bbbb9e0`
 Diff basis: `git diff 5c4142a...HEAD`
 
+## Amendment (2026-07-11)
+
+This report validated the code as of `9aa8114`. Three behavioral defects in the
+Claude Agent SDK adapter were subsequently found and fixed via live end-to-end
+verification (`d9223f5`), and four FR-8 raw-path translation tests for
+`translateAnthropicCategorical429` were added (`0ac43ec`, suite 192 → 196). The
+report's conclusions still hold for the current HEAD, but its file-and-line
+evidence refers to code that has since been superseded. See the
+Post-Completion Addendum in `CR-0001-claude-agent-sdk-provider.md` for details.
+
 ## Summary
 
 Requirements: 15/15 | Acceptance Criteria: 11/11 | Tests: 12/12 | Gaps: 0

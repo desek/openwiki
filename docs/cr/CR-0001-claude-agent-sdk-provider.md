@@ -10,7 +10,7 @@ stakeholders: OpenWiki maintainers, inference-provider integrators
 priority: "high"
 target-version: 0.2.0
 source-branch: dev/claude-agent-sdk
-source-commit: 41bfdd5
+source-commit: 0ac43ec
 ---
 
 # Adopt the Claude Agent SDK as a Subscription-Authenticated Inference Provider
@@ -601,6 +601,10 @@ pnpm test
 SDK's tool-definition and streaming surface against DeepWiki
 `anthropics/claude-agent-sdk` before implementation; add `claude-agent-sdk.test.ts`
 covering text and `tool_use` translation with a mocked `query()`.
+**Outcome (2026-07-11):** This risk materialized. Three real bridge-fidelity
+defects shipped through finalization and were caught only by a live end-to-end
+run, not by the mocked-query tests prescribed here. See the Post-Completion
+Addendum (2026-07-11) for details and fixes.
 
 ### Risk 2: Silent fallback to metered API key
 
@@ -741,3 +745,82 @@ below.
 
 None.
 <!-- /review-summary -->
+
+## Post-Completion Addendum (2026-07-11)
+
+This section is a factual record appended after the CR was finalized
+(`status: completed`, original `source-commit: 41bfdd5`). It does not restate or
+revise the finalized Requirements, Acceptance Criteria, or Phases above; those
+remain the record of what was specified and delivered at finalization. Five
+CR-tagged commits landed after finalization and are captured here. The
+frontmatter `source-commit` has been advanced to `0ac43ec` to reflect the
+current working implementation.
+
+### Risk 1 materialized: three bridge-fidelity defects caught only end-to-end
+
+The tool-calling bridge risk (Risk 1) came true. Three real defects shipped
+through finalization and were caught only by a live end-to-end run
+(`openwiki code --update` with `claude-fable-5`), not by the mocked-`query`
+tests the CR prescribed as the Risk 1 mitigation. All three were fixed in commit
+`d9223f5`.
+
+- **(a) Deny-and-interrupt error result treated as fatal.** The
+  deny-and-interrupt `canUseTool` policy makes every tool-calling turn end in an
+  SDK _error_ result. The adapter treated any non-success result as fatal and
+  threw a generic "unknown" guidance error, killing the first tool call. Fix: a
+  turn that has already emitted `tool_use` chunks now treats the trailing error
+  result (and the SDK's thrown "Claude Code returned an error result" wrapper) as
+  the expected terminal state; genuinely fatal errors now include the underlying
+  SDK detail.
+- **(b) `z.preprocess`-wrapped tool schemas degraded to opaque input.**
+  DeepAgents wraps filesystem tool schemas in `z.preprocess(...)` (a zod v4 pipe
+  with no `.shape`); the tool bridge silently degraded them to a single opaque
+  `input` parameter, so the model emitted wrongly-shaped arguments. Fix:
+  `extractToolShape` now unwraps zod wrapper types (pipe `def.out`,
+  `def.innerType`, `def.schema`) before falling back.
+- **(c) Tool-call chunks collided with the text block at index 0.** The adapter
+  assigned every `tool_call_chunk` `index: 0` (per-message position). Under
+  `streamEvents`, LangChain core rebuilds the message via
+  `convertChunksToEvents`, which keys content blocks by index; streamed text
+  occupies block 0, so on mixed text-plus-tool turns the tool call silently
+  merged into the text block and vanished, ending the DeepAgents loop mid-task.
+  Fix: tool-call block indices are now unique and non-zero per generation
+  (`TurnStreamState.nextToolBlockIndex`).
+
+Lesson: mocked-stream tests validate the translation logic but cannot catch
+integration-level stream semantics; end-to-end verification with a live
+subscription run is required for bridge changes.
+
+### New diagnostic hook: `OPENWIKI_SDK_TRACE`
+
+`src/agent/claude-agent-sdk.ts` gained a `traceSdk` hook gated on the
+`OPENWIKI_SDK_TRACE=<file>` env var, which appends shape-only stream diagnostics
+(message types and subtypes, chunk text lengths, tool names, indices, and
+argument lengths, and the error class truncated to 200 chars). It is explicitly
+content-free, matching the FR-9 hygiene applied to the debug pipeline. Added in
+`d9223f5` and sanitized in `0ac43ec` after a consistency review flagged the
+initial version as unredacted.
+
+### Consistency-review fixes (`0ac43ec`)
+
+- Four FR-8 tests added for `translateAnthropicCategorical429` (previously an
+  unconsumed export); the suite moved from 192 to 196 tests.
+- The brittle `MANAGED_ENV_KEYS` exact-ordering assertion was loosened and a
+  leftover plan-language comment was removed in `test/env.test.ts`.
+- The redundant `authMethod: "api-key"` was dropped from the `anthropic-claude`
+  config (omission is the documented default).
+- The internal CR reference was removed from the user-facing `README.md`.
+
+### End-to-end verification
+
+The repository wiki was successfully re-indexed with `claude-fable-5` over the
+subscription token (`openwiki/.last-update.json` records model
+`claude-fable-5`), demonstrating the CR's core purpose working end-to-end.
+
+### Post-finalization commit trail
+
+- `c24a839` — validation report completed.
+- `9aa8114` — validation-report gap fixes and new tests.
+- `edbfef9` — documentation updated for the implemented feature.
+- `d9223f5` — bridge bug fixes (a, b, c above) plus live Fable verification.
+- `0ac43ec` — consistency-review fixes and wiki-coverage completion.
